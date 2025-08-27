@@ -9,6 +9,9 @@ services:
   server:
     container_name: server
     image: server:latest
+    working_dir: /config
+    volumes:
+       - server-config:/config
     entrypoint: python3 /main.py
     environment:
       - PYTHONUNBUFFERED=1
@@ -23,6 +26,9 @@ cat >> "$SALIDA" <<EOF
   client$i:
     container_name: client$i
     image: client:latest
+    working_dir: /config
+    volumes:
+      - client${i}-config:/config
     entrypoint: /client
     environment:
       - CLI_ID=$i

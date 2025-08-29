@@ -1,5 +1,9 @@
 import socket
 import logging
+import signal
+
+# Timeout in seconds for server socket operations
+TIMEOUT = 1.0
 
 
 class Server:
@@ -8,6 +12,15 @@ class Server:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
+
+        self._running = True
+
+        signal.signal(signal.SIGTERM, self._handle_sigterm)
+
+    def _handle_sigterm(self, signum, frame):
+        """Handler for SIGTERM signal"""
+        logging.info(f"action: graceful_shutdown | result: in_progress | message: SIGTERM received with num:{signum} and frame:{frame}")
+        self._running = False
 
     def run(self):
         """
@@ -18,11 +31,23 @@ class Server:
         finishes, servers starts to accept new connections again
         """
 
-        # TODO: Modify this program to handle signal to graceful shutdown
-        # the server
-        while True:
-            client_sock = self.__accept_new_connection()
-            self.__handle_client_connection(client_sock)
+        self._server_socket.settimeout(TIMEOUT)
+        
+        while self._running:
+            try:
+                client_sock = self.__accept_new_connection()
+                if client_sock:
+                    self.__handle_client_connection(client_sock)
+            except socket.timeout:
+                continue
+            except Exception as e:
+                logging.error(f"action: accept_connections | result: fail | error: {e}")
+                break
+        
+        logging.info("action: close_server_socket | result: in_progress")
+        self._server_socket.close()
+        logging.info("action: close_server_socket | result: success")
+        logging.info("action: graceful_shutdown | result: success")
 
     def __handle_client_connection(self, client_sock):
         """
@@ -41,7 +66,10 @@ class Server:
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
         finally:
+            addr = client_sock.getpeername()
+            logging.info(f"action: close_client_socket | result: in_progress | ip: {addr[0]}")
             client_sock.close()
+            logging.info(f"action: close_client_socket | result: success | ip: {addr[0]}")
 
     def __accept_new_connection(self):
         """
@@ -51,8 +79,11 @@ class Server:
         Then connection created is printed and returned
         """
 
-        # Connection arrived
-        logging.info('action: accept_connections | result: in_progress')
-        c, addr = self._server_socket.accept()
-        logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
-        return c
+        try:
+            # Connection arrived
+            logging.info('action: accept_connections | result: in_progress')
+            c, addr = self._server_socket.accept()
+            logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
+            return c
+        except socket.timeout:
+            return None

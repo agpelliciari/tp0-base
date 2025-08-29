@@ -1,6 +1,7 @@
+#!/bin/sh
+
 MESSAGE="test message sended"
 
-# Construir una imagen con netcat
 docker build -t netcat-client -f- . <<EOF
 FROM alpine:latest
 RUN apk add --no-cache netcat-openbsd
@@ -14,7 +15,7 @@ PORT=12345
 
 RESULT=$(docker run --rm --network $NETWORK_NAME netcat-client sh -c "echo -n '$MESSAGE' | nc server $PORT")
 
-if [ "$RESULT" == "$MESSAGE" ]; then
+if [ "$RESULT" = "$MESSAGE" ]; then
     echo "action: test_echo_server | result: success"
 else
     echo "action: test_echo_server | result: fail"

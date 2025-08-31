@@ -80,6 +80,10 @@ func DeserializeData(dataStr string) map[string]string {
 
 // sends a serialized message through the socket
 func SendMessage(conn net.Conn, data map[string]string) error {
+    if conn == nil {
+        return errors.New("connection is nil")
+    }
+    
     message := SerializeData(data)
     messageBytes := []byte(message)
     

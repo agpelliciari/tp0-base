@@ -97,6 +97,11 @@ func (c *Client) StartClientLoop() {
 		c.createClientSocket()
 
         betData := c.getBetDataFromEnv()
+
+		if c.conn == nil {
+    		log.Warningf("action: send_bet | result: retry | client_id: %v | error: connection not established", c.config.ID)
+    		continue
+		}
         
         err := SendMessage(c.conn, betData)
         if err != nil {

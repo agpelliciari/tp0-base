@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -19,14 +20,20 @@ const (
     ZERO_BYTES = 0
 )
 
+// escapes special characters into a value
+func escapeSpecialChars(value string) string {
+    value = strings.ReplaceAll(value, FIELD_SEPARATOR, "\\" + FIELD_SEPARATOR)
+    value = strings.ReplaceAll(value, KEY_VALUE_SEPARATOR, "\\" + KEY_VALUE_SEPARATOR)
+    return value
+}
+
 // serializes a dictionary into a string with separated fields
 func SerializeData(data map[string]string) string {
     var builder strings.Builder
     
     i := 0
     for key, value := range data {
-        escapedValue := strings.ReplaceAll(value, FIELD_SEPARATOR, "\\" + FIELD_SEPARATOR)
-        escapedValue = strings.ReplaceAll(escapedValue, KEY_VALUE_SEPARATOR, "\\" + KEY_VALUE_SEPARATOR)
+        escapedValue := escapeSpecialChars(value)
         
         if i > 0 {
             builder.WriteString(FIELD_SEPARATOR)
@@ -37,6 +44,25 @@ func SerializeData(data map[string]string) string {
     
     builder.WriteString(END_MARKER)
 
+    return builder.String()
+}
+
+// serializes a batch of bets
+func SerializeBatchData(batchSize int, bets []map[string]string) string {
+    var builder strings.Builder
+    
+    builder.WriteString(fmt.Sprintf("BATCH_SIZE%s%d", KEY_VALUE_SEPARATOR, batchSize))
+    
+    for i, bet := range bets {
+        betStr := SerializeData(bet)
+        betStr = strings.TrimSuffix(betStr, END_MARKER)
+        
+        builder.WriteString(FIELD_SEPARATOR)
+        builder.WriteString(fmt.Sprintf("BET_%d%s%s", i+1, KEY_VALUE_SEPARATOR, betStr))
+    }
+    
+    builder.WriteString(END_MARKER)
+    
     return builder.String()
 }
 
@@ -78,55 +104,92 @@ func DeserializeData(dataStr string) map[string]string {
     return result
 }
 
+// deserializes a batch of bets into a dictionary
+func DeserializeBatchData(dataStr string) (int, []map[string]string) {
+    data := DeserializeData(dataStr)
+    
+    batchSizeStr, ok := data["BATCH_SIZE"]
+    if !ok {
+        return 0, nil
+    }
+    
+    batchSize, err := strconv.Atoi(batchSizeStr)
+    if err != nil {
+        return 0, nil
+    }
+    
+    bets := make([]map[string]string, 0, batchSize)
+    
+    for i := 1; i <= batchSize; i++ {
+        betKey := fmt.Sprintf("BET_%d", i)
+        betData, ok := data[betKey]
+        if !ok {
+            continue
+        }
+        
+        betData = betData + END_MARKER
+        bet := DeserializeData(betData)
+        bets = append(bets, bet)
+    }
+    
+    return batchSize, bets
+}
+
+// write N (data) bytes through the socket
+func writeExactBytes(conn net.Conn, data []byte) error {
+    totalSent := ZERO_BYTES
+    for totalSent < len(data) {
+        sent, err := conn.Write(data[totalSent:])
+        if err != nil {
+            return err
+        }
+        if sent == ZERO_BYTES {
+            return errors.New("socket connection broken")
+        }
+        totalSent += sent
+    }
+    return nil
+}
+
 // sends a serialized message through the socket
-func SendMessage(conn net.Conn, data map[string]string) error {
+func sendSerializedMessage(conn net.Conn, serializedMessage string) error {
     if conn == nil {
         return errors.New("connection is nil")
     }
     
-    message := SerializeData(data)
-    messageBytes := []byte(message)
+    messageBytes := []byte(serializedMessage)
     
     lengthPrefix := make([]byte, HEADER_SIZE)
     binary.BigEndian.PutUint32(lengthPrefix, uint32(len(messageBytes)))
     
     // send length prefix
-    totalSent := ZERO_BYTES
-    for totalSent < HEADER_SIZE {
-        sent, err := conn.Write(lengthPrefix[totalSent:])
-        if err != nil {
-            return err
-        }
-        if sent == ZERO_BYTES {
-            return errors.New("socket connection broken")
-        }
-        totalSent += sent
+    if err := writeExactBytes(conn, lengthPrefix); err != nil {
+        return err
     }
     
     // send payload
-    totalSent = ZERO_BYTES
-    for totalSent < len(messageBytes) {
-        sent, err := conn.Write(messageBytes[totalSent:])
-        if err != nil {
-            return err
-        }
-        if sent == ZERO_BYTES {
-            return errors.New("socket connection broken")
-        }
-        totalSent += sent
-    }
-    
-    return nil
+    return writeExactBytes(conn, messageBytes)
 }
 
-// receives a message from the socket
-func ReceiveMessage(conn net.Conn) (map[string]string, error) {
-    lengthBytes := make([]byte, HEADER_SIZE)
+// sends bet data through the socket
+func SendMessage(conn net.Conn, data map[string]string) error {
+    message := SerializeData(data)
+    return sendSerializedMessage(conn, message)
+}
+
+// sends batch of bets data through the socket
+func SendBatchMessage(conn net.Conn, batchSize int, bets []map[string]string) error {
+    message := SerializeBatchData(batchSize, bets)
+    return sendSerializedMessage(conn, message)
+}
+
+// read N (size) bytes from the socket
+func readExactBytes(conn net.Conn, size int) ([]byte, error) {
+    buffer := make([]byte, size)
     totalRead := ZERO_BYTES
     
-    // read length prefix
-    for totalRead < HEADER_SIZE {
-        n, err := conn.Read(lengthBytes[totalRead:])
+    for totalRead < size {
+        n, err := conn.Read(buffer[totalRead:])
         if err != nil {
             if err == io.EOF && totalRead == ZERO_BYTES {
                 return nil, errors.New("connection closed by peer")
@@ -134,29 +197,43 @@ func ReceiveMessage(conn net.Conn) (map[string]string, error) {
             return nil, err
         }
         if n == ZERO_BYTES {
-            return nil, errors.New("connection closed before receiving complete header")
+            return nil, errors.New("connection closed before receiving complete data")
         }
         totalRead += n
+    }
+    
+    return buffer, nil
+}
+
+// receives a message from the socket
+func ReceiveMessage(conn net.Conn) (map[string]string, error) {    
+    // read length prefix
+    lengthBytes, err := readExactBytes(conn, HEADER_SIZE)
+    if err != nil {
+        return nil, err
     }
     
     messageLength := binary.BigEndian.Uint32(lengthBytes)
     
     // read payload
-    messageBytes := make([]byte, messageLength)
-    totalRead = ZERO_BYTES
-    
-    for totalRead < int(messageLength) {
-        n, err := conn.Read(messageBytes[totalRead:])
-        if err != nil {
-            return nil, err
-        }
-        if n == ZERO_BYTES {
-            return nil, errors.New("connection closed before receiving complete message")
-        }
-        totalRead += n
+    messageBytes, err := readExactBytes(conn, int(messageLength))
+    if err != nil {
+        return nil, err
     }
     
     messageStr := string(messageBytes)
 
     return DeserializeData(messageStr), nil
+}
+
+// receives a batch of bets
+func ReceiveBatchMessage(conn net.Conn) (int, []map[string]string, error) {
+    data, err := ReceiveMessage(conn)
+    if err != nil {
+        return 0, nil, fmt.Errorf("error receiving batch message: %w", err)
+    }
+    
+    batchSize, bets := DeserializeBatchData(SerializeData(data))
+    
+    return batchSize, bets, nil
 }

@@ -27,6 +27,11 @@ cat >> "$SALIDA" <<EOF
     entrypoint: /client
     environment:
       - CLI_ID=$i
+      - NOMBRE=Apostador$i
+      - APELLIDO=Apellido$i
+      - DOCUMENTO=3090446$i
+      - NACIMIENTO=1999-03-1$i
+      - NUMERO=757$i
     networks:
       - testing_net
     depends_on:

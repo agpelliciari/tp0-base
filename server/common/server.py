@@ -1,9 +1,13 @@
 import socket
 import logging
 import signal
+import random
+from . import utils
+from . import communication
 
 # Timeout in seconds for server socket operations
 TIMEOUT = 1.0
+IP = 0
 
 
 class Server:
@@ -57,14 +61,43 @@ class Server:
         client socket will also be closed
         """
         try:
-            # TODO: Modify the receive to avoid short-reads
-            msg = client_sock.recv(1024).rstrip().decode('utf-8')
             addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
-            # TODO: Modify the send to avoid short-writes
-            client_sock.send("{}\n".format(msg).encode('utf-8'))
-        except OSError as e:
-            logging.error("action: receive_message | result: fail | error: {e}")
+            bet_data = communication.receive_message(client_sock)
+            logging.info(f'action: receive_message | result: success | ip: {addr[IP]}')
+            
+            try:
+                # the agency ID is assigned randomly
+                agency_id = str(random.randint(1, 5))
+                
+                bet = utils.Bet(
+                    agency=agency_id,
+                    first_name=bet_data.get('NOMBRE', ''),
+                    last_name=bet_data.get('APELLIDO', ''),
+                    document=bet_data.get('DOCUMENTO', ''),
+                    birthdate=bet_data.get('NACIMIENTO', ''),
+                    number=bet_data.get('NUMERO', '')
+                )
+                
+                utils.store_bets([bet])
+                
+                logging.info(f"action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}")
+                
+                response = {
+                    'STATUS': 'SUCCESS',
+                    'MESSAGE': 'Apuesta registrada correctamente'
+                }
+                communication.send_message(client_sock, response)
+                
+            except Exception as e:
+                logging.error(f"action: process_bet | result: fail | error: {e}")
+                response = {
+                    'STATUS': 'ERROR',
+                    'MESSAGE': str(e)
+                }
+                communication.send_message(client_sock, response)
+                
+        except Exception as e:
+            logging.error(f"action: receive_message | result: fail | error: {e}")
         finally:
             addr = client_sock.getpeername()
             logging.info(f"action: close_client_socket | result: in_progress | ip: {addr[0]}")

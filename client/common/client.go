@@ -1,10 +1,9 @@
 package common
 
 import (
-	"bufio"
 	"context"
-	"fmt"
 	"net"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -61,6 +60,17 @@ func (c *Client) closeConnection() {
     log.Infof("action: close_connection | result: success | client_id: %v", c.config.ID)
 }
 
+// obtains the data of the bet from the environment variables
+func (c *Client) getBetDataFromEnv() map[string]string {
+    return map[string]string{
+        "NOMBRE":     os.Getenv("NOMBRE"),
+        "APELLIDO":   os.Getenv("APELLIDO"),
+        "DOCUMENTO":  os.Getenv("DOCUMENTO"),
+        "NACIMIENTO": os.Getenv("NACIMIENTO"),
+        "NUMERO":     os.Getenv("NUMERO"),
+    }
+}
+
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
@@ -86,28 +96,33 @@ func (c *Client) StartClientLoop() {
 		// Create the connection the server in every loop iteration. Send an
 		c.createClientSocket()
 
-		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"[CLIENT %v] Message N°%v\n",
-			c.config.ID,
-			msgID,
-		)
-		msg, err := bufio.NewReader(c.conn).ReadString('\n')
-		c.closeConnection()
-
-		if err != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
-			)
-			return
-		}
-
-		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-			c.config.ID,
-			msg,
-		)
+        betData := c.getBetDataFromEnv()
+        
+        err := SendMessage(c.conn, betData)
+        if err != nil {
+            log.Errorf("action: send_bet | result: fail | client_id: %v | error: %v",
+                c.config.ID, err)
+            c.closeConnection()
+            continue
+        }
+        
+        response, err := ReceiveMessage(c.conn)
+        if err != nil {
+            log.Errorf("action: receive_response | result: fail | client_id: %v | error: %v",
+                c.config.ID, err)
+            c.closeConnection()
+            continue
+        }
+        
+        if response["STATUS"] == "SUCCESS" {
+            log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %s",
+                betData["DOCUMENTO"], betData["NUMERO"])
+        } else {
+            log.Errorf("action: apuesta_enviada | result: fail | error: %s",
+                response["MESSAGE"])
+        }
+        
+        c.closeConnection()
 
 		// Wait a time between sending one message and the next one
         select {

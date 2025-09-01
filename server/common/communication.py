@@ -29,6 +29,28 @@ def serialize_data(data_dict):
     
     return FIELD_SEPARATOR.join(fields) + END_MARKER
 
+def serialize_batch_data(batch_size, bets):
+    """
+    Serializes a batch of bets.
+    
+    Args:
+        batch_size: number of bets in the batch
+        bets: dictionary containing the data from the bets
+        
+    Returns:
+        string: BATCH_SIZE:3|BET_1:datos_apuesta1|BET_2:datos_apuesta2|...
+    """
+    result = {}
+    
+    result['BATCH_SIZE'] = str(batch_size)
+    
+    for i, bet in enumerate(bets, 1):
+        bet_str = serialize_data(bet).rstrip(END_MARKER)
+        result[f'BET_{i}'] = bet_str
+    
+    return serialize_data(result)
+
+
 
 def deserialize_data(data_str):
     """
@@ -72,6 +94,34 @@ def deserialize_data(data_str):
     
     return result
 
+def deserialize_batch_data(data_dict):
+    """
+    Deserializes a dictionary with the batch of bets.
+    
+    Args:
+        data_dict: dictionary with the batch of bets
+        
+    Returns:
+        tuple: (batch_size, list of dictionary of bets)
+    """
+    if 'BATCH_SIZE' not in data_dict:
+        return 0, []
+    
+    try:
+        batch_size = int(data_dict['BATCH_SIZE'])
+    except ValueError:
+        return 0, []
+    
+    bets = []
+    
+    for i in range(1, batch_size + 1):
+        bet_key = f'BET_{i}'
+        if bet_key in data_dict:
+            bet_str = data_dict[bet_key] + END_MARKER
+            bet_data = deserialize_data(bet_str)
+            bets.append(bet_data)
+    
+    return batch_size, bets
 
 def send_message(sock, data_dict):
     """
@@ -141,3 +191,17 @@ def receive_message(sock):
     message_str = message_bytes.decode('utf-8')
 
     return deserialize_data(message_str)
+
+def receive_batch_message(sock):
+    """
+    Receives a complete batch.
+    
+    Args:
+        sock: connected socket
+        
+    Returns:
+        tuple: (batch_size, list of dictionary of bets)
+    """
+    data_dict = receive_message(sock)
+    
+    return deserialize_batch_data(data_dict)

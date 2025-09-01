@@ -4,10 +4,15 @@ import signal
 import random
 from . import utils
 from . import communication
+from . import processing
 
 # Timeout in seconds for server socket operations
 TIMEOUT = 1.0
 IP = 0
+STATUS = 'STATUS'
+STATUS_SUCCESS = 'SUCCESS'
+STATUS_ERROR = 'ERROR'
+MESSAGE = 'MESSAGE'
 
 
 class Server:
@@ -18,6 +23,8 @@ class Server:
         self._server_socket.listen(listen_backlog)
 
         self._running = True
+
+        self._batch_processor = processing.BatchProcessor()
 
         signal.signal(signal.SIGTERM, self._handle_sigterm)
 
@@ -61,48 +68,86 @@ class Server:
         client socket will also be closed
         """
         try:
-            addr = client_sock.getpeername()
-            bet_data = communication.receive_message(client_sock)
-            logging.info(f'action: receive_message | result: success | ip: {addr[IP]}')
-            
-            try:
-                # the agency ID is assigned randomly
-                agency_id = str(random.randint(1, 5))
-                
-                bet = utils.Bet(
-                    agency=agency_id,
-                    first_name=bet_data.get('NOMBRE', ''),
-                    last_name=bet_data.get('APELLIDO', ''),
-                    document=bet_data.get('DOCUMENTO', ''),
-                    birthdate=bet_data.get('NACIMIENTO', ''),
-                    number=bet_data.get('NUMERO', '')
-                )
-                
-                utils.store_bets([bet])
-                
-                logging.info(f"action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}")
-                
-                response = {
-                    'STATUS': 'SUCCESS',
-                    'MESSAGE': 'Apuesta registrada correctamente'
-                }
-                communication.send_message(client_sock, response)
-                
-            except Exception as e:
-                logging.error(f"action: process_bet | result: fail | error: {e}")
-                response = {
-                    'STATUS': 'ERROR',
-                    'MESSAGE': str(e)
-                }
-                communication.send_message(client_sock, response)
+            while self._running:
+                try:
+                    addr = client_sock.getpeername()
+                    data = communication.receive_message(client_sock)
+                    logging.info(f'action: receive_message | result: success | ip: {addr[IP]}')
+                    
+                    if 'BATCH_SIZE' in data:
+                        batch_size, bets = communication.deserialize_batch_data(data)
+                        
+                        try:
+                            success, message, processed_bets = self._batch_processor.process_batch(batch_size, bets)
+                            
+                            response = {
+                                STATUS: STATUS_SUCCESS if success else STATUS_ERROR,
+                                MESSAGE: message
+                            }
+                            communication.send_message(client_sock, response)
+                            
+                        except Exception as e:
+                            logging.error(f"action: process_batch | result: fail | error: {e}")
+                            response = {
+                                STATUS: STATUS_ERROR,
+                                MESSAGE: str(e)
+                            }
+                            communication.send_message(client_sock, response)
+                        
+                    else:
+                        agency_id = str(random.randint(1, 5))
+                        
+                        bet = utils.Bet(
+                            agency=agency_id,
+                            first_name=data.get('NOMBRE', ''),
+                            last_name=data.get('APELLIDO', ''),
+                            document=data.get('DOCUMENTO', ''),
+                            birthdate=data.get('NACIMIENTO', ''),
+                            number=data.get('NUMERO', '')
+                        )
+                        
+                        utils.store_bets([bet])
+                        
+                        logging.info(f"action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}")
+                        
+                        response = {
+                            STATUS: STATUS_SUCCESS,
+                            MESSAGE: 'Apuesta registrada correctamente'
+                        }
+                        communication.send_message(client_sock, response)
+                    
+                except socket.timeout:
+                    if not self._running:
+                        break
+                    continue
+                    
+                except ConnectionError as e:
+                    logging.info(f"action: connection_closed | result: success | ip: {addr[IP]} | message: {str(e)}")
+                    break
+                    
+                except Exception as e:
+                    logging.error(f"action: process_message | result: fail | ip: {addr[IP]} | error: {e}")
+                    try:
+                        response = {
+                            STATUS: STATUS_ERROR,
+                            MESSAGE: 'Error interno del servidor'
+                        }
+                        communication.send_message(client_sock, response)
+                    except:
+                        pass
+                    break
                 
         except Exception as e:
-            logging.error(f"action: receive_message | result: fail | error: {e}")
+            logging.error(f"action: client_connection | result: fail | error: {e}")
         finally:
-            addr = client_sock.getpeername()
-            logging.info(f"action: close_client_socket | result: in_progress | ip: {addr[0]}")
-            client_sock.close()
-            logging.info(f"action: close_client_socket | result: success | ip: {addr[0]}")
+            try:
+                addr = client_sock.getpeername()
+                logging.info(f"action: close_client_socket | result: in_progress | ip: {addr[0]}")
+                client_sock.close()
+                logging.info(f"action: close_client_socket | result: success | ip: {addr[0]}")
+            except:
+                client_sock.close()
+                logging.error("action: close_client_socket | result: error | message: Could not get peer name")
 
     def __accept_new_connection(self):
         """

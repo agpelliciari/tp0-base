@@ -6,20 +6,18 @@ class BatchProcessor:
     def __init__(self):
         pass
     
-    def process_batch(self, batch_data):
+    def process_batch(self, batch_size, bets_data):
         """
         Processes a complete batch of bets
         
         Args:
-            batch_data: dictionary with bet data
+            batch_size: Number of bets in batch
+            bets_data: List of dictionaries with bet data
             
         Returns:
             tuple: (success, message, processed bets)
         """
-        try:
-            batch_size = batch_data.get('BATCH_SIZE', 0)
-            bets_data = batch_data.get('BETS', [])
-            
+        try:            
             if not bets_data or len(bets_data) != batch_size:
                 raise ValueError(f"Invalid batch: expected {batch_size} bets, got {len(bets_data)}")
             
@@ -46,5 +44,5 @@ class BatchProcessor:
             return True, f"Batch de {batch_size} apuestas registrado correctamente", processed_bets
         
         except Exception as e:
-            logging.error(f"action: apuesta_recibida | result: fail | cantidad: {batch_data.get('BATCH_SIZE', 0)} | error: {e}")
+            logging.error(f"action: apuesta_recibida | result: fail | cantidad: {batch_size} | error: {e}")
             return False, str(e), []

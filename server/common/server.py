@@ -93,29 +93,6 @@ class Server:
                                 MESSAGE: str(e)
                             }
                             communication.send_message(client_sock, response)
-                        
-                    else:
-                        agency_id = str(random.randint(1, 5))
-                        
-                        bet = utils.Bet(
-                            agency=agency_id,
-                            first_name=data.get('NOMBRE', ''),
-                            last_name=data.get('APELLIDO', ''),
-                            document=data.get('DOCUMENTO', ''),
-                            birthdate=data.get('NACIMIENTO', ''),
-                            number=data.get('NUMERO', '')
-                        )
-                        
-                        utils.store_bets([bet])
-                        
-                        logging.info(f"action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}")
-                        
-                        response = {
-                            STATUS: STATUS_SUCCESS,
-                            MESSAGE: 'Apuesta registrada correctamente'
-                        }
-                        communication.send_message(client_sock, response)
-                    
                 except socket.timeout:
                     if not self._running:
                         break

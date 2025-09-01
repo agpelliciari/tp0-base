@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 )
 
@@ -28,7 +27,7 @@ func escapeSpecialChars(value string) string {
 }
 
 // serializes a dictionary into a string with separated fields
-func SerializeData(data map[string]string) string {
+func serializeData(data map[string]string) string {
     var builder strings.Builder
     
     i := 0
@@ -48,13 +47,13 @@ func SerializeData(data map[string]string) string {
 }
 
 // serializes a batch of bets
-func SerializeBatchData(batchSize int, bets []map[string]string) string {
+func serializeBatchData(batchSize int, bets []map[string]string) string {
     var builder strings.Builder
     
     builder.WriteString(fmt.Sprintf("BATCH_SIZE%s%d", KEY_VALUE_SEPARATOR, batchSize))
     
     for i, bet := range bets {
-        betStr := SerializeData(bet)
+        betStr := serializeData(bet)
         betStr = strings.TrimSuffix(betStr, END_MARKER)
         
         builder.WriteString(FIELD_SEPARATOR)
@@ -67,7 +66,7 @@ func SerializeBatchData(batchSize int, bets []map[string]string) string {
 }
 
 // deserializes a string into a dictionary
-func DeserializeData(dataStr string) map[string]string {
+func deserializeData(dataStr string) map[string]string {
     result := make(map[string]string)
     
     dataStr = strings.TrimSuffix(dataStr, END_MARKER)
@@ -102,37 +101,6 @@ func DeserializeData(dataStr string) map[string]string {
     }
     
     return result
-}
-
-// deserializes a batch of bets into a dictionary
-func DeserializeBatchData(dataStr string) (int, []map[string]string) {
-    data := DeserializeData(dataStr)
-    
-    batchSizeStr, ok := data["BATCH_SIZE"]
-    if !ok {
-        return 0, nil
-    }
-    
-    batchSize, err := strconv.Atoi(batchSizeStr)
-    if err != nil {
-        return 0, nil
-    }
-    
-    bets := make([]map[string]string, 0, batchSize)
-    
-    for i := 1; i <= batchSize; i++ {
-        betKey := fmt.Sprintf("BET_%d", i)
-        betData, ok := data[betKey]
-        if !ok {
-            continue
-        }
-        
-        betData = betData + END_MARKER
-        bet := DeserializeData(betData)
-        bets = append(bets, bet)
-    }
-    
-    return batchSize, bets
 }
 
 // write N (data) bytes through the socket
@@ -171,15 +139,9 @@ func sendSerializedMessage(conn net.Conn, serializedMessage string) error {
     return writeExactBytes(conn, messageBytes)
 }
 
-// sends bet data through the socket
-func SendMessage(conn net.Conn, data map[string]string) error {
-    message := SerializeData(data)
-    return sendSerializedMessage(conn, message)
-}
-
 // sends batch of bets data through the socket
 func SendBatchMessage(conn net.Conn, batchSize int, bets []map[string]string) error {
-    message := SerializeBatchData(batchSize, bets)
+    message := serializeBatchData(batchSize, bets)
     return sendSerializedMessage(conn, message)
 }
 
@@ -223,17 +185,5 @@ func ReceiveMessage(conn net.Conn) (map[string]string, error) {
     
     messageStr := string(messageBytes)
 
-    return DeserializeData(messageStr), nil
-}
-
-// receives a batch of bets
-func ReceiveBatchMessage(conn net.Conn) (int, []map[string]string, error) {
-    data, err := ReceiveMessage(conn)
-    if err != nil {
-        return 0, nil, fmt.Errorf("error receiving batch message: %w", err)
-    }
-    
-    batchSize, bets := DeserializeBatchData(SerializeData(data))
-    
-    return batchSize, bets, nil
+    return deserializeData(messageStr), nil
 }

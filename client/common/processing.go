@@ -51,60 +51,53 @@ func createBetDataFromRecord(record []string) BetData {
     }
 }
 
-// reads all the bets registered in the csv file
-func (bp *BatchProcessor) ReadBetsFromCSV() ([]BetData, error) {
+// opens the file and returns a Reader for the processing
+func (bp *BatchProcessor) OpenCSVReader() (*csv.Reader, *os.File, error) {
     filePath := filepath.Join(".data", fmt.Sprintf("agency-%s.csv", bp.clientID))
 
     if _, err := os.Stat(filePath); os.IsNotExist(err) {
-        return nil, fmt.Errorf("CSV file not found for client %s: %v", bp.clientID, err)
+        return nil, nil, fmt.Errorf("CSV file not found for client %s: %v", bp.clientID, err)
     }
     
     file, err := os.Open(filePath)
     if err != nil {
-        return nil, fmt.Errorf("error opening CSV file: %v", err)
+        return nil, nil, fmt.Errorf("error opening CSV file: %v", err)
     }
-    defer file.Close()
     
     reader := csv.NewReader(file)
     reader.Comma = ','
     
-    // Leer y descartar encabezados
     if _, err = reader.Read(); err != nil {
-        return nil, fmt.Errorf("error reading CSV headers: %v", err)
+        file.Close()
+        return nil, nil, fmt.Errorf("error reading CSV headers: %v", err)
     }
     
-    var bets []BetData
+    return reader, file, nil
+}
+
+// reads only the necessary registers for the processing of a batch
+func (bp *BatchProcessor) ReadNextBatch(reader *csv.Reader) ([]BetData, error) {
+    batch := make([]BetData, 0, bp.batchMaxSize)
     
-    for {
+    for i := 0; i < bp.batchMaxSize; i++ {
         record, err := reader.Read()
         if err == io.EOF {
             break
         }
         if err != nil {
-            return nil, fmt.Errorf("error reading CSV record: %v", err)
+            return batch, fmt.Errorf("error reading CSV record: %v", err)
         }
         
         if len(record) >= RECORD_MAX_SIZE {
-            bets = append(bets, createBetDataFromRecord(record))
+            batch = append(batch, createBetDataFromRecord(record))
         }
     }
     
-    return bets, nil
-}
-
-// divides the bets in batches based on the config file
-func (bp *BatchProcessor) CreateBatches(allBets []BetData) [][]BetData {
-    var batches [][]BetData
-    
-    for i := 0; i < len(allBets); i += bp.batchMaxSize {
-        end := i + bp.batchMaxSize
-        if end > len(allBets) {
-            end = len(allBets)
-        }
-        batches = append(batches, allBets[i:end])
+    if len(batch) == 0 {
+        return nil, io.EOF
     }
     
-    return batches
+    return batch, nil
 }
 
 // converts the bet batch into the format used to send data

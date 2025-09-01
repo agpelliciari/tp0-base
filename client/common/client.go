@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"io"
 	"net"
 	"os/signal"
 	"syscall"
@@ -77,21 +78,6 @@ func (c *Client) closeConnection() {
     log.Infof("action: close_connection | result: success | client_id: %v", c.config.ID)
 }
 
-// prepares all the batches of bets from the csv file
-func (c *Client) prepareAllBatches() ([][]BetData, error) {
-    allBets, err := c.batchProcessor.ReadBetsFromCSV()
-    if err != nil {
-        log.Criticalf("action: read_bets | result: fail | client_id: %v | error: %v", c.config.ID, err)
-        return nil, err
-    }
-    
-    batches := c.batchProcessor.CreateBatches(allBets)
-    log.Infof("action: create_batches | result: success | client_id: %v | batches: %d", 
-        c.config.ID, len(batches))
-    
-    return batches, nil
-}
-
 // checks if a SIGTERM was received
 func (c *Client) checkTerminationSignal(ctx context.Context) bool {
     select {
@@ -165,10 +151,27 @@ func (c *Client) waitForNextBatch(ctx context.Context) bool {
     }
 }
 
-// loop where the batches of bets are sended to the server
-func (c *Client) sendBatchesLoop(ctx context.Context, batches [][]BetData) {
+// StartClientLoop Send messages to the client until some time threshold is met
+func (c *Client) StartClientLoop() {
+    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+    defer stop()
+    
+    // persistent connection
+    if err := c.createClientSocket(); err != nil {
+        log.Criticalf("action: connect | result: fail | client_id: %v | error: %v", c.config.ID, err)
+        return
+    }
+    defer c.closeConnection()
+
+    reader, file, err := c.batchProcessor.OpenCSVReader()
+    if err != nil {
+        log.Criticalf("action: open_csv | result: fail | client_id: %v | error: %v", c.config.ID, err)
+        return
+    }
+    defer file.Close()
+
     batchIndex := 0
-    for msgID := 1; msgID <= c.config.LoopAmount && batchIndex < len(batches); msgID++ {
+    for {
         if c.checkTerminationSignal(ctx) {
             return
         }
@@ -177,7 +180,16 @@ func (c *Client) sendBatchesLoop(ctx context.Context, batches [][]BetData) {
             continue
         }
         
-        currentBatch := batches[batchIndex]
+        currentBatch, err := c.batchProcessor.ReadNextBatch(reader)
+        if err == io.EOF {
+            log.Infof("action: read_batch | result: done | client_id: %v | message: No more batches", c.config.ID)
+            break
+        }
+        if err != nil {
+            log.Errorf("action: read_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
+            continue
+        }
+        
         if !c.sendAndProcessBatch(currentBatch, batchIndex) {
             continue
         }
@@ -191,24 +203,4 @@ func (c *Client) sendBatchesLoop(ctx context.Context, batches [][]BetData) {
 
     log.Infof("action: loop_finished | result: success | client_id: %v | batches_sent: %d", 
         c.config.ID, batchIndex)
-}
-
-// StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
-    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-    defer stop()
-    
-    // persistent connection
-    if err := c.createClientSocket(); err != nil {
-        log.Criticalf("action: connect | result: fail | client_id: %v | error: %v", c.config.ID, err)
-        return
-    }
-    defer c.closeConnection()
-
-    batches, err := c.prepareAllBatches()
-    if err != nil {
-        return
-    }
-
-    c.sendBatchesLoop(ctx, batches)
 }

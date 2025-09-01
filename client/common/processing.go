@@ -63,14 +63,9 @@ func (bp *BatchProcessor) OpenCSVReader() (*csv.Reader, *os.File, error) {
     if err != nil {
         return nil, nil, fmt.Errorf("error opening CSV file: %v", err)
     }
-    
+
     reader := csv.NewReader(file)
     reader.Comma = ','
-    
-    if _, err = reader.Read(); err != nil {
-        file.Close()
-        return nil, nil, fmt.Errorf("error reading CSV headers: %v", err)
-    }
     
     return reader, file, nil
 }
@@ -82,14 +77,21 @@ func (bp *BatchProcessor) ReadNextBatch(reader *csv.Reader) ([]BetData, error) {
     for i := 0; i < bp.batchMaxSize; i++ {
         record, err := reader.Read()
         if err == io.EOF {
+            log.Infof("action: read_batch | result: eof | client_id: %v", 
+                bp.clientID)
             break
         }
         if err != nil {
+            log.Errorf("action: read_record | result: error | client_id: %v | error: %v", 
+                bp.clientID, err)
             return batch, fmt.Errorf("error reading CSV record: %v", err)
         }
-        
+                
         if len(record) >= RECORD_MAX_SIZE {
             batch = append(batch, createBetDataFromRecord(record))
+        } else {
+            log.Warningf("action: process_record | result: skip | client_id: %v | reason: insufficient_fields | fields: %d | required: %d", 
+                bp.clientID, len(record), RECORD_MAX_SIZE)
         }
     }
     

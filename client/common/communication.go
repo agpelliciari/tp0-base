@@ -19,33 +19,6 @@ const (
     ZERO_BYTES = 0
 )
 
-// escapes special characters into a value
-func escapeSpecialChars(value string) string {
-    value = strings.ReplaceAll(value, FIELD_SEPARATOR, "\\" + FIELD_SEPARATOR)
-    value = strings.ReplaceAll(value, KEY_VALUE_SEPARATOR, "\\" + KEY_VALUE_SEPARATOR)
-    return value
-}
-
-// serializes a dictionary into a string with separated fields
-func serializeData(data map[string]string) string {
-    var builder strings.Builder
-    
-    i := 0
-    for key, value := range data {
-        escapedValue := escapeSpecialChars(value)
-        
-        if i > 0 {
-            builder.WriteString(FIELD_SEPARATOR)
-        }
-        builder.WriteString(fmt.Sprintf("%s%s%s", key, KEY_VALUE_SEPARATOR, escapedValue))
-        i++
-    }
-    
-    builder.WriteString(END_MARKER)
-
-    return builder.String()
-}
-
 // serializes a batch of bets
 func serializeBatchData(batchSize int, bets []map[string]string) string {
     var builder strings.Builder
@@ -53,11 +26,18 @@ func serializeBatchData(batchSize int, bets []map[string]string) string {
     builder.WriteString(fmt.Sprintf("BATCH_SIZE%s%d", KEY_VALUE_SEPARATOR, batchSize))
     
     for i, bet := range bets {
-        betStr := serializeData(bet)
-        betStr = strings.TrimSuffix(betStr, END_MARKER)
+        var betBuilder strings.Builder
+        orderedKeys := []string{"NOMBRE", "APELLIDO", "DOCUMENTO", "NACIMIENTO", "NUMERO"}
+        
+        for j, key := range orderedKeys {
+            if j > 0 {
+                betBuilder.WriteString("\\|")
+            }
+            betBuilder.WriteString(fmt.Sprintf("%s%s%s", key, KEY_VALUE_SEPARATOR, bet[key]))
+        }
         
         builder.WriteString(FIELD_SEPARATOR)
-        builder.WriteString(fmt.Sprintf("BET_%d%s%s", i+1, KEY_VALUE_SEPARATOR, betStr))
+        builder.WriteString(fmt.Sprintf("BET_%d%s%s", i+1, KEY_VALUE_SEPARATOR, betBuilder.String()))
     }
     
     builder.WriteString(END_MARKER)

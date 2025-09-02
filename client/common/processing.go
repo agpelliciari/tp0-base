@@ -77,8 +77,6 @@ func (bp *BatchProcessor) ReadNextBatch(reader *csv.Reader) ([]BetData, error) {
     for i := 0; i < bp.batchMaxSize; i++ {
         record, err := reader.Read()
         if err == io.EOF {
-            log.Infof("action: read_batch | result: eof | client_id: %v", 
-                bp.clientID)
             break
         }
         if err != nil {

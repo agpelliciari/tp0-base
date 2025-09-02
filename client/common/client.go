@@ -129,12 +129,6 @@ func (c *Client) processBatchResponse(response map[string]string, batch []BetDat
     if response[STATUS_KEY] == STATUS_SUCCESS {
         log.Infof("action: apuesta_enviada | result: success | batch_size: %d | batch_number: %d",
             len(batch), batchIndex+1)
-        
-        if len(batch) > 0 {
-            bet := batch[0]
-            log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %s",
-                bet.Documento, bet.Numero)
-        }
     } else {
         log.Errorf("action: apuesta_enviada | result: fail | batch_size: %d | error: %s",
             len(batch), response[MESSAGE_KEY])
@@ -182,7 +176,7 @@ func (c *Client) StartClientLoop() {
         
         currentBatch, err := c.batchProcessor.ReadNextBatch(reader)
         if err == io.EOF {
-            log.Infof("action: read_batch | result: done | client_id: %v | message: No more batches", c.config.ID)
+            log.Infof("action: read_batch | result: success | client_id: %v | message: No more batches", c.config.ID)
             break
         }
         if err != nil {

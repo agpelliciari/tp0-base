@@ -103,7 +103,7 @@ class Server:
                     break
                     
                 except Exception as e:
-                    logging.error(f"action: process_message | result: fail | ip: {addr[IP]} | error: {e}")
+                    """logging.error(f"action: process_message | result: fail | ip: {addr[IP]} | error: {e}")
                     try:
                         response = {
                             STATUS: STATUS_ERROR,
@@ -111,7 +111,7 @@ class Server:
                         }
                         communication.send_message(client_sock, response)
                     except:
-                        pass
+                        pass"""
                     break
                 
         except Exception as e:

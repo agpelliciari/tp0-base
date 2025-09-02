@@ -5,6 +5,7 @@ import random
 from . import utils
 from . import communication
 from . import processing
+from . import lottery_state
 
 # Timeout in seconds for server socket operations
 TIMEOUT = 1.0
@@ -25,6 +26,8 @@ class Server:
         self._running = True
 
         self._batch_processor = processing.BatchProcessor()
+
+        self._lottery_state = lottery_state.create_lottery_manager()
 
         signal.signal(signal.SIGTERM, self._handle_sigterm)
 
@@ -93,6 +96,39 @@ class Server:
                                 MESSAGE: str(e)
                             }
                             communication.send_message(client_sock, response)
+                    
+                    elif 'ACTION' in data and data['ACTION'] == 'FINISH_BETTING':
+                        agency_id = data.get('AGENCY_ID', '0')
+                        
+                        all_ready = self._lottery_state.agency_finished(agency_id)
+                        
+                        response = {
+                            STATUS: STATUS_SUCCESS,
+                            MESSAGE: "Apuestas recibidas correctamente"
+                        }
+                        communication.send_message(client_sock, response)
+                        
+                        if all_ready:
+                            self._lottery_state.perform_lottery()
+                    
+                    elif 'ACTION' in data and data['ACTION'] == 'GET_WINNERS':
+                        agency_id = data.get('AGENCY_ID', '0')
+                        winners = self._lottery_state.get_winners_for_agency(agency_id)
+                        
+                        if winners is None:
+                            response = {
+                                STATUS: STATUS_ERROR,
+                                MESSAGE: "El sorteo aún no se ha realizado"
+                            }
+                        else:
+                            winners_str = ",".join(winners)
+                            response = {
+                                STATUS: STATUS_SUCCESS,
+                                "WINNERS": winners_str
+                            }
+                        
+                        communication.send_message(client_sock, response)
+
                 except socket.timeout:
                     if not self._running:
                         break

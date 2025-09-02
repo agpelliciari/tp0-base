@@ -71,6 +71,10 @@ class Server:
         client socket will also be closed
         """
         try:
+            client_sock.settimeout(TIMEOUT)
+            addr = None
+            agency_id = None
+
             while self._running:
                 try:
                     addr = client_sock.getpeername()
@@ -98,10 +102,13 @@ class Server:
                             communication.send_message(client_sock, response)
                     
                     elif 'ACTION' in data and data['ACTION'] == 'FINISH_BETTING':
-                        agency_id = data.get('AGENCY_ID', '0')
+                        agency_id = data.get('AGENCY_ID', agency_id or '0')
                         
+                        self._lottery_state.register_waiting_client(agency_id, client_sock, addr)
+                        logging.info(f"action: register_waiting_client | result: success | agency_id: {agency_id}")
+
                         all_ready = self._lottery_state.agency_finished(agency_id)
-                        
+
                         response = {
                             STATUS: STATUS_SUCCESS,
                             MESSAGE: "Apuestas recibidas correctamente"
@@ -110,24 +117,10 @@ class Server:
                         
                         if all_ready:
                             self._lottery_state.perform_lottery()
-                    
-                    elif 'ACTION' in data and data['ACTION'] == 'GET_WINNERS':
-                        agency_id = data.get('AGENCY_ID', '0')
-                        winners = self._lottery_state.get_winners_for_agency(agency_id)
-                        
-                        if winners is None:
-                            response = {
-                                STATUS: STATUS_ERROR,
-                                MESSAGE: "El sorteo aún no se ha realizado"
-                            }
-                        else:
-                            winners_str = ",".join(winners)
-                            response = {
-                                STATUS: STATUS_SUCCESS,
-                                "WINNERS": winners_str
-                            }
-                        
-                        communication.send_message(client_sock, response)
+                            logging.info("action: sorteo | result: success")
+                            self._notify_all_waiting_clients()
+                            return
+                        break
 
                 except socket.timeout:
                     if not self._running:
@@ -139,25 +132,18 @@ class Server:
                     break
                     
                 except Exception as e:
-                    """logging.error(f"action: process_message | result: fail | ip: {addr[IP]} | error: {e}")
-                    try:
-                        response = {
-                            STATUS: STATUS_ERROR,
-                            MESSAGE: 'Error interno del servidor'
-                        }
-                        communication.send_message(client_sock, response)
-                    except:
-                        pass"""
                     break
                 
         except Exception as e:
             logging.error(f"action: client_connection | result: fail | error: {e}")
-        finally:
+        
+        if agency_id not in self._lottery_state.waiting_clients:
             try:
-                addr = client_sock.getpeername()
-                logging.info(f"action: close_client_socket | result: in_progress | ip: {addr[0]}")
+                if addr:
+                    logging.info(f"action: close_client_socket | result: in_progress | ip: {addr[0]}")
                 client_sock.close()
-                logging.info(f"action: close_client_socket | result: success | ip: {addr[0]}")
+                if addr:
+                    logging.info(f"action: close_client_socket | result: success | ip: {addr[0]}")
             except:
                 client_sock.close()
                 logging.error("action: close_client_socket | result: error | message: Could not get peer name")
@@ -178,3 +164,30 @@ class Server:
             return c
         except socket.timeout:
             return None
+
+    def _notify_all_waiting_clients(self):
+            """Notify all waiting clients with their respective winners"""
+            for agency_id, (client_sock, addr) in list(self._lottery_state.waiting_clients.items()):
+                try:
+                    winners = self._lottery_state.get_winners_for_agency(agency_id)
+                    winners_str = ",".join(winners) if winners else ""
+                    
+                    response = {
+                        STATUS: STATUS_SUCCESS,
+                        "WINNERS": winners_str
+                    }
+                    
+                    communication.send_message(client_sock, response)
+                    logging.info(f"action: notify_winners | result: success | agency_id: {agency_id} | winners: {len(winners)}")
+                    
+                except Exception as e:
+                    logging.error(f"action: notify_winners | result: fail | agency_id: {agency_id} | error: {e}")
+                finally:
+                    try:
+                        client_sock.close()
+                        logging.info(f"action: close_client_socket | result: success | ip: {addr[IP]}")
+                    except:
+                        pass
+            
+            logging.info(f"action: notify_all_clients | result: success")
+            self._lottery_state.waiting_clients.clear()

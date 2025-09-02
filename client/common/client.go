@@ -226,17 +226,7 @@ func (c *Client) StartClientLoop() {
         return
     }
     
-    winnersMsg := map[string]string{
-        "ACTION": "GET_WINNERS",
-        "AGENCY_ID": c.config.ID,
-    }
-    
-    if err := SendMessage(c.conn, winnersMsg); err != nil {
-        log.Errorf("action: winners_request | result: fail | client_id: %v | error: %v", 
-            c.config.ID, err)
-        c.closeConnection()
-        return
-    }
+    c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
     
     winnersResponse, err := ReceiveMessage(c.conn)
     if err != nil {

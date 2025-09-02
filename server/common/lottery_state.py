@@ -8,9 +8,22 @@ class LotteryState:
     """
     def __init__(self):
         self.agencies_ready = set()
+        self.waiting_clients = {} 
         self.lottery_done = False
         self.winners_by_agency = {}
-        self.required_agencies = 5 
+        self.required_agencies = 5
+
+    def register_waiting_client(self, agency_id, client_sock, client_addr):
+        """
+        Registers a client that is waiting for lottery results
+        
+        Args:
+            agency_id: Agency identifier
+            client_sock: Client socket connection
+            client_addr: Client address information
+        """
+        agency_id = str(agency_id)
+        self.waiting_clients[agency_id] = (client_sock, client_addr)
 
     def agency_finished(self, agency_id):
         """
@@ -50,7 +63,7 @@ class LotteryState:
         
         self.winners_by_agency = winners
         self.lottery_done = True
-                
+        
         return True
 
     def get_winners_for_agency(self, agency_id):

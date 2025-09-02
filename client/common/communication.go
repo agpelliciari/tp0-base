@@ -167,3 +167,36 @@ func ReceiveMessage(conn net.Conn) (map[string]string, error) {
 
     return deserializeData(messageStr), nil
 }
+
+// sends bet data through the socket
+func SendMessage(conn net.Conn, data map[string]string) error {
+    message := serializeData(data)
+    return sendSerializedMessage(conn, message)
+}
+
+// serializes a dictionary into a string with separated fields
+func serializeData(data map[string]string) string {
+    var builder strings.Builder
+    
+    i := 0
+    for key, value := range data {
+        escapedValue := escapeSpecialChars(value)
+        
+        if i > 0 {
+            builder.WriteString(FIELD_SEPARATOR)
+        }
+        builder.WriteString(fmt.Sprintf("%s%s%s", key, KEY_VALUE_SEPARATOR, escapedValue))
+        i++
+    }
+    
+    builder.WriteString(END_MARKER)
+
+    return builder.String()
+}
+
+// escapes special characters into a value
+func escapeSpecialChars(value string) string {
+    value = strings.ReplaceAll(value, FIELD_SEPARATOR, "\\" + FIELD_SEPARATOR)
+    value = strings.ReplaceAll(value, KEY_VALUE_SEPARATOR, "\\" + KEY_VALUE_SEPARATOR)
+    return value
+}

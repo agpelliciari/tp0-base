@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -197,4 +198,64 @@ func (c *Client) StartClientLoop() {
 
     log.Infof("action: loop_finished | result: success | client_id: %v | batches_sent: %d", 
         c.config.ID, batchIndex)
+
+    finishMsg := map[string]string{
+        "ACTION": "FINISH_BETTING",
+        "AGENCY_ID": c.config.ID,
+    }
+    
+    if err := SendMessage(c.conn, finishMsg); err != nil {
+        log.Errorf("action: finish_notification | result: fail | client_id: %v | error: %v", 
+            c.config.ID, err)
+        c.closeConnection()
+        return
+    }
+    
+    confirmation, err := ReceiveMessage(c.conn)
+    if err != nil {
+        log.Errorf("action: finish_confirmation | result: fail | client_id: %v | error: %v", 
+            c.config.ID, err)
+        c.closeConnection()
+        return
+    }
+    
+    if confirmation[STATUS_KEY] != STATUS_SUCCESS {
+        log.Errorf("action: finish_reconfirmation | result: fail | client_id: %v | message: %s", 
+            c.config.ID, confirmation[MESSAGE_KEY])
+        c.closeConnection()
+        return
+    }
+    
+    winnersMsg := map[string]string{
+        "ACTION": "GET_WINNERS",
+        "AGENCY_ID": c.config.ID,
+    }
+    
+    if err := SendMessage(c.conn, winnersMsg); err != nil {
+        log.Errorf("action: winners_request | result: fail | client_id: %v | error: %v", 
+            c.config.ID, err)
+        c.closeConnection()
+        return
+    }
+    
+    winnersResponse, err := ReceiveMessage(c.conn)
+    if err != nil {
+        log.Errorf("action: winners_response | result: fail | client_id: %v | error: %v", 
+            c.config.ID, err)
+        c.closeConnection()
+        return
+    }
+    
+    if winnersResponse[STATUS_KEY] != STATUS_SUCCESS {
+        log.Errorf("action: winners_response | result: fail | client_id: %v | message: %s", 
+            c.config.ID, winnersResponse[MESSAGE_KEY])
+    } else {
+        winnersCount := 0
+        if winnersStr, ok := winnersResponse["WINNERS"]; ok && winnersStr != "" {
+            winners := strings.Split(winnersStr, ",")
+            winnersCount = len(winners)
+        }
+        
+        log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", winnersCount)
+    }
 }

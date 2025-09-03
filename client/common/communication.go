@@ -27,7 +27,7 @@ func serializeBatchData(batchSize int, bets []map[string]string) string {
     
     for i, bet := range bets {
         var betBuilder strings.Builder
-        orderedKeys := []string{"NOMBRE", "APELLIDO", "DOCUMENTO", "NACIMIENTO", "NUMERO"}
+        orderedKeys := []string{"NOMBRE", "APELLIDO", "DOCUMENTO", "NACIMIENTO", "NUMERO", "AGENCY_ID"}
         
         for j, key := range orderedKeys {
             if j > 0 {

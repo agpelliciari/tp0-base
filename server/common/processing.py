@@ -24,7 +24,7 @@ class BatchProcessor:
             processed_bets = []
             
             for bet_data in bets_data:
-                agency_id = str(random.randint(1, 5))
+                agency_id = bet_data.get('AGENCY_ID', str(random.randint(1, 5)))
                 
                 bet = utils.Bet(
                     agency=agency_id,

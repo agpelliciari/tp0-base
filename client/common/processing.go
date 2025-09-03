@@ -25,6 +25,7 @@ type BetData struct {
     Documento  string
     Nacimiento string
     Numero     string
+    Agency    string
 }
 
 // handles the processing
@@ -41,13 +42,14 @@ func NewBatchProcessor(clientID string, batchMaxSize int) *BatchProcessor {
     }
 }
 
-func createBetDataFromRecord(record []string) BetData {
+func createBetDataFromRecord(record []string, clientID string) BetData {
     return BetData{
         Nombre:     record[NAME],
         Apellido:   record[SURNAME],
         Documento:  record[DOCUMENT_NUMBER],
         Nacimiento: record[BIRTH_DATE],
         Numero:     record[NUMBER],
+        Agency:     clientID,
     }
 }
 
@@ -86,7 +88,7 @@ func (bp *BatchProcessor) ReadNextBatch(reader *csv.Reader) ([]BetData, error) {
         }
                 
         if len(record) >= RECORD_MAX_SIZE {
-            batch = append(batch, createBetDataFromRecord(record))
+            batch = append(batch, createBetDataFromRecord(record, bp.clientID))
         } else {
             log.Warningf("action: process_record | result: skip | client_id: %v | reason: insufficient_fields | fields: %d | required: %d", 
                 bp.clientID, len(record), RECORD_MAX_SIZE)
@@ -111,6 +113,7 @@ func (bp *BatchProcessor) prepareBatchForSending(batch []BetData) []map[string]s
             "DOCUMENTO":  bet.Documento,
             "NACIMIENTO": bet.Nacimiento,
             "NUMERO":     bet.Numero,
+            "AGENCY_ID": bet.Agency,
         }
     }
     

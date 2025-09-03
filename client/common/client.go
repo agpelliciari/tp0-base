@@ -105,6 +105,10 @@ func (c *Client) connectionIsActive() bool {
 
 // encapsulates the communication with the server
 func (c *Client) sendAndProcessBatch(batch []BetData, batchIndex int) bool {
+    for i := range batch {
+        batch[i].Agency = c.config.ID
+    }
+    
     err := c.batchProcessor.SendBatch(c.conn, batch)
     if err != nil {
         log.Errorf("action: send_batch | result: fail | client_id: %v | batch_size: %d | error: %v",
@@ -226,7 +230,7 @@ func (c *Client) StartClientLoop() {
         return
     }
     
-    c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+    c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
     
     winnersResponse, err := ReceiveMessage(c.conn)
     if err != nil {

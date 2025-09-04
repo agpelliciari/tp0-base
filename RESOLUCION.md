@@ -1,5 +1,8 @@
 # Arquitectura general
 
+<img width="941" height="581" alt="ARQUITECTURA" src="https://github.com/user-attachments/assets/04aa2167-37ff-4081-aa26-7d5be8245011" />
+
+
 ## Separacion de responsabilidades
 Al servidor y al cliente se le pueden distinguir las siguientes capas:
 - **Capa de logica de negocio**: maneja el flujo de cada una de las entidades y sus interacciones.

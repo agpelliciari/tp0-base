@@ -4,9 +4,8 @@ import signal
 import threading
 import queue
 from .communication import Sender, Protocol, Receiver
+from .processing import BatchProcessor, LotteryState
 from .constants import *
-from . import processing
-from . import lottery_state
 
 class Server:
     def __init__(self, port, listen_backlog, number_of_clients):
@@ -17,9 +16,9 @@ class Server:
         
         self._running = True
 
-        self._batch_processor = processing.BatchProcessor()
+        self._batch_processor = BatchProcessor()
 
-        self._lottery_state = lottery_state.create_lottery_manager(number_of_clients)
+        self._lottery_state = LotteryState(number_of_clients)
 
         self._lottery_lock = threading.RLock()
         self._work_queue = queue.Queue()

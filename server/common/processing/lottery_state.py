@@ -1,21 +1,7 @@
 import threading
-import logging
-from . import utils
-
-def create_lottery_manager(number_of_agencies):
-    """
-    Creates and returns a new instance of the lottery manager.
-    
-    Returns:
-        LotteryState: Instance to manage the lottery state
-    """
-    return LotteryState(number_of_agencies)
+from .. import utils
 
 class LotteryState:
-    """
-    Manages the lottery state and tracks agencies that have finished
-    sending their bets, as well as the winner processing.
-    """
     def __init__(self, number_of_agencies):
         self.agencies_ready = set()
         self.waiting_clients = {} 

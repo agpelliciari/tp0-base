@@ -1,5 +1,5 @@
 from ..constants import *
-from protocol import Protocol
+from .protocol import Protocol
 
 import struct
 

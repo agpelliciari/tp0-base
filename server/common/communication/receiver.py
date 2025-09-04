@@ -1,11 +1,11 @@
 from ..constants import *
-from protocol import Protocol
+from .protocol import Protocol
 
 import struct
 
 class Receiver:
     @staticmethod
-    def receive_message(self, sock):
+    def receive_message(sock):
         """
         Receives the complete message from the socket.
         Uses a length prefix to avoid short reads.
@@ -38,9 +38,10 @@ class Receiver:
         
         message_str = message_bytes.decode('utf-8')
         
-        return self.protocol.deserialize_data(message_str)
+        return Protocol.deserialize_data(message_str)
     
-    def receive_batch(self, sock):
+    @staticmethod
+    def receive_batch(sock):
         """
         Receives a complete batch.
         
@@ -50,6 +51,6 @@ class Receiver:
         Returns:
             tuple: (batch_size, list of dictionary of bets)
         """
-        data_dict = self.receive_message(sock)
+        data_dict = Receiver.receive_message(sock)
         
-        return self.protocol.deserialize_batch_data(data_dict)
+        return Protocol.deserialize_batch_data(data_dict)

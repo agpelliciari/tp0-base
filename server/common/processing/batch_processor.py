@@ -1,6 +1,6 @@
 import logging
 import random
-from . import utils
+from .. import utils
 
 class BatchProcessor:    
     def __init__(self):

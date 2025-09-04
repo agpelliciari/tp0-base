@@ -1,22 +1,10 @@
 from ..constants import *
 from communication import Protocol
 
+import struct
+
 class Receiver:
-    """
-    Clase encargada de la recepción de mensajes a través de un socket.
-    Utiliza el protocolo definido para la deserialización.
-    """
-    
-    def __init__(self, protocol=None):
-        """
-        Inicializa el Receiver con un protocolo opcional.
-        
-        Args:
-            protocol: Instancia del protocolo a utilizar para deserializar.
-                     Si es None, se usa el protocolo por defecto.
-        """
-        self.protocol = protocol or Protocol()
-    
+    @staticmethod
     def receive_message(self, sock):
         """
         Receives the complete message from the socket.

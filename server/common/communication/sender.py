@@ -1,7 +1,10 @@
 from ..constants import *
 from communication import Protocol
 
-class Sender:    
+import struct
+
+class Sender:
+    @staticmethod    
     def send_message(sock, data_dict):
         """"
         Sends a serialized message through the socket.
@@ -16,9 +19,13 @@ class Sender:
         """
         message = Protocol.serialize_data(data_dict)
         
-        message_bytes = Protocol.encode_string(message)
+        """message_bytes = Protocol.encode_string(message)
         
-        length_prefix = Protocol.int_to_bytes(len(message_bytes))
+        length_prefix = Protocol.int_to_bytes(len(message_bytes))"""
+
+        message_bytes = message.encode()
+    
+        length_prefix = struct.pack('!I', len(message_bytes))
         
         # send length prefix
         total_sent = ZERO_BYTES

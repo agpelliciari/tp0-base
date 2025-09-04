@@ -17,32 +17,30 @@ class BatchProcessor:
         Returns:
             tuple: (success, message, processed bets)
         """
-        try:            
-            if not bets_data or len(bets_data) != batch_size:
-                raise ValueError(f"Invalid batch: expected {batch_size} bets, got {len(bets_data)}")
+        if not bets_data or len(bets_data) != batch_size:
+            msg = f"Invalid batch: expected {batch_size} bets, got {len(bets_data) if bets_data else 0}"
+            logging.warning(f"action: process_batch | result: invalid | reason: {msg}")
+            return False, msg, []
             
-            processed_bets = []
-            
-            for bet_data in bets_data:
-                agency_id = bet_data.get('AGENCY_ID', str(random.randint(1, 5)))
-                
-                bet = utils.Bet(
-                    agency=agency_id,
-                    first_name=bet_data.get('NOMBRE', ''),
-                    last_name=bet_data.get('APELLIDO', ''),
-                    document=bet_data.get('DOCUMENTO', ''),
-                    birthdate=bet_data.get('NACIMIENTO', ''),
-                    number=bet_data.get('NUMERO', '')
-                )
-                
-                processed_bets.append(bet)
-            
-            utils.store_bets(processed_bets)
-            
-            logging.info(f"action: apuesta_recibida | result: success | cantidad: {batch_size}")
-            
-            return True, f"Batch de {batch_size} apuestas registrado correctamente", processed_bets
+        processed_bets = []
         
-        except Exception as e:
-            logging.error(f"action: apuesta_recibida | result: fail | cantidad: {batch_size} | error: {e}")
-            return False, str(e), []
+        for bet_data in bets_data:
+            agency_id = bet_data.get('AGENCY_ID')
+            
+            bet = utils.Bet(
+                agency=agency_id,
+                first_name=bet_data.get('NOMBRE', ''),
+                last_name=bet_data.get('APELLIDO', ''),
+                document=bet_data.get('DOCUMENTO', ''),
+                birthdate=bet_data.get('NACIMIENTO', ''),
+                number=bet_data.get('NUMERO', '')
+            )
+            
+            processed_bets.append(bet)
+            
+        
+        msg = f"Batch de {batch_size} apuestas procesado"
+
+        logging.info(f"action: process_batch | result: success | cantidad: {batch_size}")
+
+        return True, msg, processed_bets

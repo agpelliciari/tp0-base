@@ -2,7 +2,9 @@ import socket
 import logging
 import signal
 import threading
-import queue
+
+from . import utils
+from .thread_queue import ThreadQueue
 from .communication import Sender, Protocol, Receiver
 from .processing import BatchProcessor, LotteryState
 from .constants import *
@@ -20,8 +22,9 @@ class Server:
 
         self._lottery_state = LotteryState(number_of_clients)
 
-        self._lottery_lock = threading.RLock()
-        self._work_queue = queue.Queue()
+        self._process_batch_lock = threading.RLock()
+
+        self._work_queue = ThreadQueue()
         self._worker_threads = []
         self._worker_count = number_of_clients
         
@@ -33,24 +36,21 @@ class Server:
         signal.signal(signal.SIGTERM, self._handle_sigterm)
 
     def _handle_sigterm(self, signum, frame):
-        """Handler for SIGTERM signal"""
         self._running = False
-
-        for _ in range(self._worker_count):
-            self._work_queue.put(None)
         try:
             self._server_socket.close()
         except Exception:
             pass
 
+        for _ in range(self._worker_count):
+            self._work_queue.put(None)
+
+
     def _worker_thread(self):
         """Process of every worker thread to handle the connection of the clients"""
         while self._running:
-            try:
-                client_sock = self._work_queue.get()
-            except queue.Empty:
-                continue
-
+            client_sock = self._work_queue.get()
+            
             if client_sock is None:
                 self._work_queue.task_done()
                 break
@@ -105,7 +105,6 @@ class Server:
         client socket will also be closed
         """
         addr = None
-        agency_id = None
         keep_open_for_waiting = False
 
         try:
@@ -114,43 +113,17 @@ class Server:
             while self._running:
                 try:
                     addr = client_sock.getpeername()
+
                     data = Receiver.receive_message(client_sock)
                     
-                    if BATCH_KEY in data:
-                        batch_size, bets = Protocol.deserialize_batch_data(data)
-                        
-                        try:
-                            with self._lottery_lock:
-                                success, message, processed_bets = self._batch_processor.process_batch(batch_size, bets)
-                            
-                            response = {
-                                STATUS_KEY: STATUS_SUCCESS if success else STATUS_ERROR,
-                                MESSAGE_KEY: message
-                            }
-                            Sender.send_message(client_sock, response)
-                            
-                        except Exception as e:
-                            logging.error(f"action: process_batch | result: fail | error: {e}")
-                            response = {
-                                STATUS_KEY: STATUS_ERROR,
-                                MESSAGE_KEY: str(e)
-                            }
-                            Sender.send_message(client_sock, response)
+                    if BATCH_KEY in data:                        
+                        self._process_batch_request(client_sock, data)
                     
                     elif ACTION_KEY in data and data[ACTION_KEY] == BETTING_FINISHED_ACTION:
-                        agency_id = data.get(AGENCY_ID_KEY)
-                        
-                        lottery_ready = self._lottery_state.register_and_try_to_start_the_lottery(
-                            agency_id, client_sock, addr
-                        )
-                        
-                        if lottery_ready:
-                            threading.Thread(target=self._notify_all_waiting_clients).start()
-                            logging.info("action: sorteo | result: success")
-                            keep_open_for_waiting = True
+                        keep_open_for_waiting, lottery_done = self._handle_finish_action(client_sock, addr, data)
+
+                        if lottery_done:
                             return
-                        
-                        keep_open_for_waiting = True
                         break
 
                 except socket.timeout:
@@ -225,5 +198,43 @@ class Server:
 
             
             logging.info(f"action: notify_all_clients | result: success")
+
+            logging.info("action: sorteo | result: success")
             
             self._lottery_state.clear_waiting_clients()
+
+    def _process_batch_request(self, client_sock, data):
+        batch_size, bets = Protocol.deserialize_batch_data(data)
+        try:
+            success, message, processed_bets = self._batch_processor.process_batch(batch_size, bets)
+
+            if success and processed_bets:
+                # store_bets is not thread-safe
+                with self._process_batch_lock:
+                    utils.store_bets(processed_bets)
+
+                response = {
+                    STATUS_KEY: STATUS_SUCCESS if success else STATUS_ERROR,
+                    MESSAGE_KEY: message
+                }
+
+        except Exception as e:
+            logging.error(f"action: process_batch | result: fail | error: {e}")
+            response = {STATUS_KEY: STATUS_ERROR, MESSAGE_KEY: str(e)}
+
+        Sender.send_message(client_sock, response)
+
+    def _handle_finish_action(self, client_sock, addr, data):
+        """
+        Handles the wait of the clients before starting the lottery
+        """
+        agency_id = data.get(AGENCY_ID_KEY)
+
+        lottery_ready = self._lottery_state.register_and_try_to_start_the_lottery(
+            agency_id, client_sock, addr
+        )
+        if lottery_ready:
+            threading.Thread(target=self._notify_all_waiting_clients, daemon=True).start()
+            return True, True   
+        
+        return True, False

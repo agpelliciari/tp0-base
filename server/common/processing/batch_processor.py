@@ -41,6 +41,4 @@ class BatchProcessor:
         
         msg = f"Batch de {batch_size} apuestas procesado"
 
-        logging.info(f"action: process_batch | result: success | cantidad: {batch_size}")
-
         return True, msg, processed_bets

@@ -213,6 +213,8 @@ class Server:
                 with self._process_batch_lock:
                     utils.store_bets(processed_bets)
 
+                logging.info(f"action: apuesta_recibida | result: success | cantidad: {batch_size}")
+
                 response = {
                     STATUS_KEY: STATUS_SUCCESS if success else STATUS_ERROR,
                     MESSAGE_KEY: message

@@ -1,6 +1,8 @@
 import socket
 import logging
 import signal
+import threading
+import queue
 from . import communication
 from . import processing
 from . import lottery_state
@@ -27,12 +29,34 @@ class Server:
 
         self._lottery_state = lottery_state.create_lottery_manager(number_of_clients)
 
+        self._lottery_lock = threading.RLock()
+        
+        self._work_queue = queue.Queue()
+        self._worker_threads = []
+        
+        for i in range(number_of_clients):
+            thread = threading.Thread(target=self._worker_thread, daemon=True)
+            thread.start()
+            self._worker_threads.append(thread)
+
         signal.signal(signal.SIGTERM, self._handle_sigterm)
 
     def _handle_sigterm(self, signum, frame):
         """Handler for SIGTERM signal"""
         logging.info(f"action: graceful_shutdown | result: in_progress | message: SIGTERM received with num:{signum} and frame:{frame}")
         self._running = False
+
+    def _worker_thread(self):
+        """Process of every worker thread to handle the connection of the clients"""
+        while self._running:
+            try:
+                client_sock = self._work_queue.get()
+                self.__handle_client_connection(client_sock)
+                self._work_queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                logging.error(f"action: worker_thread | result: fail | error: {e}")
 
     def run(self):
         """
@@ -49,14 +73,14 @@ class Server:
             try:
                 client_sock = self.__accept_new_connection()
                 if client_sock:
-                    self.__handle_client_connection(client_sock)
+                    self._work_queue.put(client_sock)
             except socket.timeout:
                 continue
             except Exception as e:
                 logging.error(f"action: accept_connections | result: fail | error: {e}")
                 break
-        
-        logging.info("action: close_server_socket | result: in_progress")
+
+        self._work_queue.join()
         self._server_socket.close()
         logging.info("action: close_server_socket | result: success")
         logging.info("action: graceful_shutdown | result: success")
@@ -77,13 +101,13 @@ class Server:
                 try:
                     addr = client_sock.getpeername()
                     data = communication.receive_message(client_sock)
-                    logging.info(f'action: receive_message | result: success | ip: {addr[IP]}')
                     
                     if 'BATCH_SIZE' in data:
                         batch_size, bets = communication.deserialize_batch_data(data)
                         
                         try:
-                            success, message, processed_bets = self._batch_processor.process_batch(batch_size, bets)
+                            with self._lottery_lock:
+                                success, message, processed_bets = self._batch_processor.process_batch(batch_size, bets)
                             
                             response = {
                                 STATUS: STATUS_SUCCESS if success else STATUS_ERROR,
@@ -102,15 +126,15 @@ class Server:
                     elif 'ACTION' in data and data['ACTION'] == 'FINISH_BETTING':
                         agency_id = data.get('AGENCY_ID', agency_id or '0')
                         
-                        self._lottery_state.register_waiting_client(agency_id, client_sock, addr)
-                        logging.info(f"action: register_waiting_client | result: success | agency_id: {agency_id}")
+                        with self._lottery_lock:
+                            self._lottery_state.register_waiting_client(agency_id, client_sock, addr)
 
-                        all_ready = self._lottery_state.agency_finished(agency_id)
+                        lottery_ready = self._lottery_state.agency_finished(agency_id)
                         
-                        if all_ready:
+                        if lottery_ready:
                             self._lottery_state.perform_lottery()
                             logging.info("action: sorteo | result: success")
-                            self._notify_all_waiting_clients()
+                            threading.Thread(target=self._notify_all_waiting_clients).start()
                             return
                         break
 
@@ -129,16 +153,17 @@ class Server:
         except Exception as e:
             logging.error(f"action: client_connection | result: fail | error: {e}")
         
-        if agency_id not in self._lottery_state.waiting_clients:
-            try:
-                if addr:
-                    logging.info(f"action: close_client_socket | result: in_progress | ip: {addr[0]}")
-                client_sock.close()
-                if addr:
-                    logging.info(f"action: close_client_socket | result: success | ip: {addr[0]}")
-            except:
-                client_sock.close()
-                logging.error("action: close_client_socket | result: error | message: Could not get peer name")
+        with self._lottery_lock:
+            if agency_id not in self._lottery_state.waiting_clients:
+                try:
+                    if addr:
+                        logging.info(f"action: close_client_socket | result: in_progress | ip: {addr[0]}")
+                    client_sock.close()
+                    if addr:
+                        logging.info(f"action: close_client_socket | result: success | ip: {addr[0]}")
+                except:
+                    client_sock.close()
+                    logging.error("action: close_client_socket | result: error | message: Could not get peer name")
 
     def __accept_new_connection(self):
         """
@@ -159,9 +184,14 @@ class Server:
 
     def _notify_all_waiting_clients(self):
             """Notify all waiting clients with their respective winners"""
-            for agency_id, (client_sock, addr) in list(self._lottery_state.waiting_clients.items()):
+            with self._lottery_lock:
+                waiting_clients_copy = dict(self._lottery_state.waiting_clients)
+
+            for agency_id, (client_sock, addr) in waiting_clients_copy.items():
                 try:
-                    winners = self._lottery_state.get_winners_for_agency(agency_id)
+                    with self._lottery_lock:
+                        winners = self._lottery_state.get_winners_for_agency(agency_id)
+
                     winners_str = ",".join(winners) if winners else ""
                     
                     response = {
@@ -182,4 +212,6 @@ class Server:
                         pass
             
             logging.info(f"action: notify_all_clients | result: success")
-            self._lottery_state.waiting_clients.clear()
+            
+            with self._lottery_lock:
+                self._lottery_state.waiting_clients.clear()

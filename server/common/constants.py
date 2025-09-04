@@ -27,6 +27,7 @@ ACTION_KEY = 'ACTION'
 
 # Constantes para manejo de bytes
 BYTE_MASK = 0xFF
+ENCODING = 'UTF-8'
 
 TIMEOUT = 1.0
 IP_FIELD = 0

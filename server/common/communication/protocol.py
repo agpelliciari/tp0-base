@@ -113,38 +113,26 @@ class Protocol:
         return batch_size, bets
     
     @staticmethod
-    def decode_string(sequence_of_bytes):
-        """
-        Decodes a secuence of bytes into an string
-        """   
-        return sequence_of_bytes.decode()
-    
+    def uint_to_bytes(number: int) -> bytes:
+        """converts u32 big-endian -> bytes"""
+        return number.to_bytes(4, byteorder="big", signed=False)
+
     @staticmethod
-    def encode_string(string_to_convert):
-        """
-        Encodes an string into a secuence of bytes
-        """   
-        return string_to_convert.encode()
-    
+    def bytes_to_uint(byte_chain: bytes) -> int:
+        """converts bytes -> u32 big-endian"""
+        return int.from_bytes(byte_chain, byteorder="big", signed=False)
+
     @staticmethod
-    def bytes_to_int(bytes_data):
-        """
-        Converts bytes into an int using Big Endian
-        """          
-        result = 0
-        for byte in bytes_data:
-            result = (result << 8) + byte
-        
-        return result
-    
+    def encode_text(string: str) -> bytes:
+        """maps str -> bytes (UTF-8)."""
+        return string.encode(ENCODING)
+
     @staticmethod
-    def int_to_bytes(value, size=HEADER_SIZE):
-        """
-        Converts an int into bytes using Big Endian
-        """ 
-        result = bytearray(size)
-        
-        for i in range(size - 1, -1, -1):
-            result[size - 1 - i] = (value >> (i * 8)) & BYTE_MASK
-        
-        return bytes(result)
+    def decode_text(byte_chain: bytes) -> str:
+        """maps bytes -> str using (UTF-8)."""
+        return byte_chain.decode(ENCODING)
+
+    @staticmethod
+    def encode_frame(payload: bytes) -> bytes:
+        """maps length(4B BE) + payload; valida tamaño."""
+        return Protocol.uint_to_bytes(len(payload)) + payload

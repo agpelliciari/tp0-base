@@ -27,7 +27,7 @@ class Receiver:
                 raise RuntimeError("Connection closed before receiving complete header")
             length_bytes += received_data
         
-        message_length = struct.unpack('!I', length_bytes)[0]
+        message_length = Protocol.bytes_to_uint(length_bytes)
         
         message_bytes = b''
         while len(message_bytes) < message_length:
@@ -36,7 +36,7 @@ class Receiver:
                 raise RuntimeError("Connection closed before receiving complete message")
             message_bytes += received_data
         
-        message_str = message_bytes.decode('utf-8')
+        message_str = Protocol.decode_text(message_bytes)
         
         return Protocol.deserialize_data(message_str)
     

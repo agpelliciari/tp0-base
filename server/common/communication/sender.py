@@ -18,14 +18,10 @@ class Sender:
             RuntimeError: error in the connection
         """
         message = Protocol.serialize_data(data_dict)
-        
-        """message_bytes = Protocol.encode_string(message)
-        
-        length_prefix = Protocol.int_to_bytes(len(message_bytes))"""
 
-        message_bytes = message.encode()
+        message_bytes = Protocol.encode_text(message)
     
-        length_prefix = struct.pack('!I', len(message_bytes))
+        length_prefix = Protocol.uint_to_bytes(len(message_bytes))
         
         # send length prefix
         total_sent = ZERO_BYTES

@@ -106,12 +106,6 @@ class Server:
                         logging.info(f"action: register_waiting_client | result: success | agency_id: {agency_id}")
 
                         all_ready = self._lottery_state.agency_finished(agency_id)
-
-                        response = {
-                            STATUS: STATUS_SUCCESS,
-                            MESSAGE: "Apuestas recibidas correctamente"
-                        }
-                        communication.send_message(client_sock, response)
                         
                         if all_ready:
                             self._lottery_state.perform_lottery()

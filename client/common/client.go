@@ -215,23 +215,6 @@ func (c *Client) StartClientLoop() {
         return
     }
     
-    confirmation, err := ReceiveMessage(c.conn)
-    if err != nil {
-        log.Errorf("action: finish_confirmation | result: fail | client_id: %v | error: %v", 
-            c.config.ID, err)
-        c.closeConnection()
-        return
-    }
-    
-    if confirmation[STATUS_KEY] != STATUS_SUCCESS {
-        log.Errorf("action: finish_reconfirmation | result: fail | client_id: %v | message: %s", 
-            c.config.ID, confirmation[MESSAGE_KEY])
-        c.closeConnection()
-        return
-    }
-    
-    c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-    
     winnersResponse, err := ReceiveMessage(c.conn)
     if err != nil {
         log.Errorf("action: winners_response | result: fail | client_id: %v | error: %v", 

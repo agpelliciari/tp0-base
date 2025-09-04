@@ -3,18 +3,12 @@ import logging
 import signal
 import threading
 import queue
-from . import communication
+from .communication import Sender 
+from .communication import Protocol
+from .communication import Receiver
+from .constants import *
 from . import processing
 from . import lottery_state
-
-# Timeout in seconds for server socket operations
-TIMEOUT = 1.0
-IP = 0
-STATUS = 'STATUS'
-STATUS_SUCCESS = 'SUCCESS'
-STATUS_ERROR = 'ERROR'
-MESSAGE = 'MESSAGE'
-
 
 class Server:
     def __init__(self, port, listen_backlog, number_of_clients):
@@ -22,7 +16,7 @@ class Server:
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
-
+        
         self._running = True
 
         self._batch_processor = processing.BatchProcessor()
@@ -30,7 +24,6 @@ class Server:
         self._lottery_state = lottery_state.create_lottery_manager(number_of_clients)
 
         self._lottery_lock = threading.RLock()
-        
         self._work_queue = queue.Queue()
         self._worker_threads = []
         
@@ -100,31 +93,31 @@ class Server:
             while self._running:
                 try:
                     addr = client_sock.getpeername()
-                    data = communication.receive_message(client_sock)
+                    data = Receiver.receive_message(client_sock)
                     
-                    if 'BATCH_SIZE' in data:
-                        batch_size, bets = communication.deserialize_batch_data(data)
+                    if BATCH_KEY in data:
+                        batch_size, bets = Protocol.deserialize_batch_data(data)
                         
                         try:
                             with self._lottery_lock:
                                 success, message, processed_bets = self._batch_processor.process_batch(batch_size, bets)
                             
                             response = {
-                                STATUS: STATUS_SUCCESS if success else STATUS_ERROR,
-                                MESSAGE: message
+                                STATUS_KEY: STATUS_SUCCESS if success else STATUS_ERROR,
+                                MESSAGE_KEY: message
                             }
-                            communication.send_message(client_sock, response)
+                            Sender.send_message(client_sock, response)
                             
                         except Exception as e:
                             logging.error(f"action: process_batch | result: fail | error: {e}")
                             response = {
-                                STATUS: STATUS_ERROR,
-                                MESSAGE: str(e)
+                                STATUS_KEY: STATUS_ERROR,
+                                MESSAGE_KEY: str(e)
                             }
-                            communication.send_message(client_sock, response)
+                            Sender.send_message(client_sock, response)
                     
-                    elif 'ACTION' in data and data['ACTION'] == 'FINISH_BETTING':
-                        agency_id = data.get('AGENCY_ID', agency_id or '0')
+                    elif ACTION_KEY in data and data[ACTION_KEY] == BETTING_FINISHED_ACTION:
+                        agency_id = data.get(AGENCY_ID_KEY)
                         
                         with self._lottery_lock:
                             self._lottery_state.register_waiting_client(agency_id, client_sock, addr)
@@ -144,7 +137,7 @@ class Server:
                     continue
                     
                 except ConnectionError as e:
-                    logging.info(f"action: connection_closed | result: success | ip: {addr[IP]} | message: {str(e)}")
+                    logging.info(f"action: connection_closed | result: success | ip: {addr[IP_FIELD]} | message: {str(e)}")
                     break
                     
                 except Exception as e:
@@ -157,10 +150,10 @@ class Server:
             if agency_id not in self._lottery_state.waiting_clients:
                 try:
                     if addr:
-                        logging.info(f"action: close_client_socket | result: in_progress | ip: {addr[0]}")
+                        logging.info(f"action: close_client_socket | result: in_progress | ip: {addr[IP_FIELD]}")
                     client_sock.close()
                     if addr:
-                        logging.info(f"action: close_client_socket | result: success | ip: {addr[0]}")
+                        logging.info(f"action: close_client_socket | result: success | ip: {addr[IP_FIELD]}")
                 except:
                     client_sock.close()
                     logging.error("action: close_client_socket | result: error | message: Could not get peer name")
@@ -176,7 +169,7 @@ class Server:
         try:
             # Connection arrived
             c, addr = self._server_socket.accept()
-            logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
+            logging.info(f'action: accept_connections | result: success | ip: {addr[IP_FIELD]}')
             return c
         except socket.timeout:
             return None
@@ -194,11 +187,11 @@ class Server:
                     winners_str = ",".join(winners) if winners else ""
                     
                     response = {
-                        STATUS: STATUS_SUCCESS,
+                        STATUS_KEY: STATUS_SUCCESS,
                         "WINNERS": winners_str
                     }
                     
-                    communication.send_message(client_sock, response)
+                    Sender.send_message(client_sock, response)
                     logging.info(f"action: notify_winners | result: success | agency_id: {agency_id} | winners: {len(winners)}")
                     
                 except Exception as e:
@@ -206,7 +199,7 @@ class Server:
                 finally:
                     try:
                         client_sock.close()
-                        logging.info(f"action: close_client_socket | result: success | ip: {addr[IP]}")
+                        logging.info(f"action: close_client_socket | result: success | ip: {addr[IP_FIELD]}")
                     except:
                         pass
             

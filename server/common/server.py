@@ -1,8 +1,6 @@
 import socket
 import logging
 import signal
-import random
-from . import utils
 from . import communication
 from . import processing
 from . import lottery_state
@@ -17,7 +15,7 @@ MESSAGE = 'MESSAGE'
 
 
 class Server:
-    def __init__(self, port, listen_backlog):
+    def __init__(self, port, listen_backlog, number_of_clients):
         # Initialize server socket
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
@@ -27,7 +25,7 @@ class Server:
 
         self._batch_processor = processing.BatchProcessor()
 
-        self._lottery_state = lottery_state.create_lottery_manager()
+        self._lottery_state = lottery_state.create_lottery_manager(number_of_clients)
 
         signal.signal(signal.SIGTERM, self._handle_sigterm)
 

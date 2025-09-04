@@ -12,6 +12,7 @@ services:
     entrypoint: python3 /main.py
     environment:
       - PYTHONUNBUFFERED=1
+      - NUMBER_OF_CLIENTS=$CANTIDAD
     networks:
       - testing_net
     volumes:
